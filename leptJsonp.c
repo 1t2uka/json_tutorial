@@ -39,11 +39,17 @@ static int leptp_parse_value(leptp_context *c, leptp_value *v) {
 //json解析器
 int leptp_parse(leptp_value *v, const char *json){
     leptp_context c;
+    int ret;
     assert( v != NULL );
     c.json = json;
     v->type = LEPTP_NULL;
     leptp_parse_whitespace(&c);
-    return leptp_parse_value(&c,v);
+    if((ret=leptp_parse_value(&c,v)) == LEPTP_PARSE_OK){
+        leptp_parse_whitespace(&c);
+        if(*c.json !='\0')
+            return LEPTP_PARSE_ROOT_NOT_SINGULAR;
+    }
+    return ret;
 }
 
 //获取json数据类型
