@@ -25,3 +25,6 @@
 以下是未来计划或当前未完全实现的特性：
 + [] 实现原项目中json解析器的全部功能
 + [] 以cpp语言改写，尽可能体现cpp特性
+
+
+测试：需在当前sheLl下指定`export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH`

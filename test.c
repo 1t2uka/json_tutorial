@@ -21,66 +21,48 @@ static int test_pass = 0;   //通过测试数量
 
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
 
+#define TEST_ERROR(error, json)\
+    do{\
+        leptp_value v;\
+        v.type = LEPTP_FALSE;\
+        EXPECT_EQ_INT(error, leptp_parse(&v, json));\
+        EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(&v));\
+    }while(0)
+
+#define TEST_LITERAL(literal, str_type, json)\
+    do{\
+        leptp_value v;\
+        v.type = str_type;\
+        EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v,json));\
+        EXPECT_EQ_INT(literal, leptp_get_type(&v));\
+    }while(0)
+
 //测试对null字面值解析是否正确
-static void test_parse_null() {
-    leptp_value v;
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_OK,leptp_parse(&v,"null"));
-    EXPECT_EQ_INT(LEPTP_NULL,leptp_get_type(&v));
-}
-
-static void test_parse_true(){
-    leptp_value v;
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_OK,leptp_parse(&v,"true"));
-    EXPECT_EQ_INT(LEPTP_TRUE,leptp_get_type(&v));
-}
-
-static void test_parse_false(){
-    leptp_value v;
-    v.type = LEPTP_TRUE;
-    EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v,"false"));
-    EXPECT_EQ_INT(LEPTP_FALSE, leptp_get_type(&v));
+static void test_parse_literal() {
+    TEST_LITERAL(LEPTP_NULL, LEPTP_FALSE, "null");
+    TEST_LITERAL(LEPTP_TRUE, LEPTP_FALSE, "true");
+    TEST_LITERAL(LEPTP_FALSE, LEPTP_TRUE, "false");
 }
 
 static void test_parse_expect_value(){
-    leptp_value v;
-
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_EXPECT_VALUE, leptp_parse(&v,""));
-    EXPECT_EQ_INT(LEPTP_NULL,leptp_get_type(&v));
-
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_EXPECT_VALUE, leptp_parse(&v," "));
-    EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(&v));
+    TEST_ERROR(LEPTP_PARSE_EXPECT_VALUE, "");
+    TEST_ERROR(LEPTP_PARSE_EXPECT_VALUE, " ");
 }
 
 static void test_parse_invalid_value(){
-    leptp_value v;
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_INVALID_VALUE, leptp_parse(&v, "nul"));
-    EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(&v));
-
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_INVALID_VALUE, leptp_parse(&v, "?"));
-    EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(&v));
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "nul");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "?");
 }
 
 static void test_parse_root_not_singular(){
-    leptp_value v;
-    v.type = LEPTP_FALSE;
-    EXPECT_EQ_INT(LEPTP_PARSE_ROOT_NOT_SINGULAR, leptp_parse(&v, "null x"));
-    EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(&v));
-
+    TEST_ERROR(LEPTP_PARSE_ROOT_NOT_SINGULAR,"null x");
 }
 
 static void test_parse(){
-    test_parse_null();
+    test_parse_literal();
     test_parse_expect_value();
     test_parse_invalid_value();
     test_parse_root_not_singular();
-    test_parse_true();
-    test_parse_false();
 }
 
 int main(){
