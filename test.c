@@ -29,6 +29,20 @@ static void test_parse_null() {
     EXPECT_EQ_INT(LEPTP_NULL,leptp_get_type(&v));
 }
 
+static void test_parse_true(){
+    leptp_value v;
+    v.type = LEPTP_FALSE;
+    EXPECT_EQ_INT(LEPTP_PARSE_OK,leptp_parse(&v,"true"));
+    EXPECT_EQ_INT(LEPTP_TRUE,leptp_get_type(&v));
+}
+
+static void test_parse_false(){
+    leptp_value v;
+    v.type = LEPTP_TRUE;
+    EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v,"false"));
+    EXPECT_EQ_INT(LEPTP_FALSE, leptp_get_type(&v));
+}
+
 static void test_parse_expect_value(){
     leptp_value v;
 
@@ -65,6 +79,8 @@ static void test_parse(){
     test_parse_expect_value();
     test_parse_invalid_value();
     test_parse_root_not_singular();
+    test_parse_true();
+    test_parse_false();
 }
 
 int main(){

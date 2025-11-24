@@ -27,10 +27,32 @@ static int leptp_parse_null(leptp_context *c, leptp_value *v) {
     return LEPTP_PARSE_OK;
 }
 
+//判断true类型
+static int leptp_parse_true(leptp_context *c, leptp_value *v) {
+    EXPECT(c,'t');
+    if(c->json[0] != 'r' || c->json[1] != 'u' || c->json[2] != 'e')
+        return LEPTP_PARSE_INVALID_VALUE;
+    c->json += 3;
+    v->type = LEPTP_TRUE;
+    return LEPTP_PARSE_OK;
+}
+//判断false类型
+static int leptp_parse_false(leptp_context *c, leptp_value *v) {
+    EXPECT(c,'f');
+    if(c->json[0] != 'a' || c->json[1] != 'l' || c->json[2] != 's' || c->json[3] != 'e')
+        return LEPTP_PARSE_INVALID_VALUE;
+    c->json += 4;
+    v->type = LEPTP_FALSE;
+    return LEPTP_PARSE_OK;
+}
+
+
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
     switch(*c->json){
         case 'n' : return leptp_parse_null(c,v);
+        case 't' : return leptp_parse_true(c,v);
+        case 'f' : return leptp_parse_false(c,v);
         case '\0' : return LEPTP_PARSE_EXPECT_VALUE;
         default : return LEPTP_PARSE_INVALID_VALUE;
     }
