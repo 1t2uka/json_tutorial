@@ -1,6 +1,8 @@
 #include "leptJsonp.h"
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
 //校验并推进json解析字符位置，搭配leptp_contect结构使用
 #define EXPECT(c,ch)    do{assert(*c->json == (ch)); c->json++;} while(0)
@@ -49,14 +51,20 @@ static int leptp_parse_false(leptp_context *c, leptp_value *v) {
 //判断number类型——使用strtod()函数
 static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     char *end;
+    if(c->json[0] == '+' || c->json[0] == '.')
+        return LEPTP_PARSE_INVALID_VALUE;
+    const char *p_ptr = strchr(c->json,'.');
     v->n = strtod(c->json, &end);
     if(c->json == end)
+        return LEPTP_PARSE_INVALID_VALUE;
+    if(isinf(v->n) || isnan(v->n))
+        return LEPTP_PARSE_INVALID_VALUE;
+    if(end != NULL && end == p_ptr + 1)
         return LEPTP_PARSE_INVALID_VALUE;
     c->json = end;
     v->type = LEPTP_NUMBER;
     return LEPTP_PARSE_OK;
 }
-
 
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
