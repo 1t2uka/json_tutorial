@@ -46,6 +46,17 @@ static int leptp_parse_false(leptp_context *c, leptp_value *v) {
     return LEPTP_PARSE_OK;
 }
 
+//判断number类型——使用strtod()函数
+static int leptp_parse_number(leptp_context *c, leptp_value *v) {
+    char *end;
+    v->n = strtod(c->json, &end);
+    if(c->json == end)
+        return LEPTP_PARSE_INVALID_VALUE;
+    c->json = end;
+    v->type = LEPTP_NUMBER;
+    return LEPTP_PARSE_OK;
+}
+
 
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
@@ -53,8 +64,8 @@ static int leptp_parse_value(leptp_context *c, leptp_value *v) {
         case 'n' : return leptp_parse_null(c,v);
         case 't' : return leptp_parse_true(c,v);
         case 'f' : return leptp_parse_false(c,v);
+        default: return leptp_parse_number(c,v);
         case '\0' : return LEPTP_PARSE_EXPECT_VALUE;
-        default : return LEPTP_PARSE_INVALID_VALUE;
     }
 }
 
@@ -80,3 +91,8 @@ leptp_type leptp_get_type(const leptp_value *v){
     return v->type;
 }
 
+//获取数字
+double leptp_get_number(const leptp_value *v){
+    assert( v!= NULL && v->type == LEPTP_NUMBER );
+    return v->n;
+}

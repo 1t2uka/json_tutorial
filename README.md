@@ -8,8 +8,8 @@
 
 **特点：**
 + 极简设计：代码结构简单，专注核心逻辑
-+ c语言实现，不依赖外部库，轻量高效
-+ 严格遵循json规范，依照原项目流程，尽可能符合json规范
++ c语言实现:不依赖外部库，轻量高效
++ 严格遵循json规范:依照原项目流程，尽可能符合json规范
 
 ## 项目结构
 
@@ -27,4 +27,4 @@
 + [] 以cpp语言改写，尽可能体现cpp特性
 
 
-测试：需在当前sheLl下指定`export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH`
+测试：需在当前shell下指定`export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH`

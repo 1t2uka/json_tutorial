@@ -20,6 +20,7 @@ static int test_pass = 0;   //通过测试数量
     }while(0)
 
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
+#define EXPECT_EQ_DOUBLE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%.17g")
 
 #define TEST_ERROR(error, json)\
     do{\
@@ -29,19 +30,26 @@ static int test_pass = 0;   //通过测试数量
         EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(&v));\
     }while(0)
 
-#define TEST_LITERAL(literal, str_type, json)\
+#define TEST_LITERAL(literal, json)\
     do{\
         leptp_value v;\
-        v.type = str_type;\
         EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v,json));\
         EXPECT_EQ_INT(literal, leptp_get_type(&v));\
     }while(0)
 
+#define TEST_NUMBER(expect, json)\
+    do{\
+        leptp_value v;\
+        EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v, json));\
+        EXPECT_EQ_INT(LEPTP_NUMBER, leptp_get_type(&v));\
+        EXPECT_EQ_DOUBLE(expect, leptp_get_number(&v));\
+    }while(0);
+
 //测试对null字面值解析是否正确
 static void test_parse_literal() {
-    TEST_LITERAL(LEPTP_NULL, LEPTP_FALSE, "null");
-    TEST_LITERAL(LEPTP_TRUE, LEPTP_FALSE, "true");
-    TEST_LITERAL(LEPTP_FALSE, LEPTP_TRUE, "false");
+    TEST_LITERAL(LEPTP_NULL, "null");
+    TEST_LITERAL(LEPTP_TRUE, "true");
+    TEST_LITERAL(LEPTP_FALSE, "false");
 }
 
 static void test_parse_expect_value(){
@@ -52,10 +60,57 @@ static void test_parse_expect_value(){
 static void test_parse_invalid_value(){
     TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "nul");
     TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "?");
+
+#if 0
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "+0");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "+1");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, ".123");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "1.");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "INF");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "inf");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "NAN");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "nan");
+#endif
 }
 
 static void test_parse_root_not_singular(){
     TEST_ERROR(LEPTP_PARSE_ROOT_NOT_SINGULAR,"null x");
+
+#if 0
+    TEST_ERROR(LEPTP_PARSE_ROOT_NOT_SINGULAR, "0123");
+    TEST_ERROR(LEPTP_PARSE_ROOT_NOT_SINGULAR, "0x0");
+    TEST_ERROR(LEPTP_PARSE_ROOT_NOT_SINGULAR, "0x123");
+#endif
+
+}
+
+static void test_parse_number() {
+    TEST_NUMBER(0.0,"0");
+    TEST_NUMBER(0.0,"-0");
+    TEST_NUMBER(0.0,"-0.0");
+    TEST_NUMBER(1.0,"1");
+    TEST_NUMBER(-1.0,"-1");
+    TEST_NUMBER(1.5,"1.5");
+    TEST_NUMBER(-1.5,"-1.5");
+    TEST_NUMBER(3.1416,"3.1416");
+    TEST_NUMBER(1E10,"1E10");
+    TEST_NUMBER(1e10,"1e10");
+    TEST_NUMBER(1E+10,"1E+10");
+    TEST_NUMBER(1E-10,"1E-10");
+    TEST_NUMBER(-1E10,"-1E10");
+    TEST_NUMBER(-1e10,"-1e10");
+    TEST_NUMBER(-1E+10,"-1E+10");
+    TEST_NUMBER(-1E-10,"-1E-10");
+    TEST_NUMBER(1.234E+10,"1.234E+10");
+    TEST_NUMBER(1.234E-10,"1.234E-10");
+    TEST_NUMBER(0.0,"1e-10000");
+}
+
+static void test_number_too_big() {
+#if 0
+    TEST_ERROR(LEPTP_PARSE_NUMBER_TOO_BIG, "1e309");
+    TEST_ERROR(LEPTP_PARSE_NUMBER_TOO_BIG, "-1e309");
+#endif
 }
 
 static void test_parse(){
@@ -63,6 +118,8 @@ static void test_parse(){
     test_parse_expect_value();
     test_parse_invalid_value();
     test_parse_root_not_singular();
+    test_parse_number();
+    test_number_too_big();
 }
 
 int main(){
