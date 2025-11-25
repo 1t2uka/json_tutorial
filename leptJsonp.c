@@ -53,14 +53,22 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     char *end;
     if(c->json[0] == '+' || c->json[0] == '.')
         return LEPTP_PARSE_INVALID_VALUE;
+
     const char *p_ptr = strchr(c->json,'.');
     v->n = strtod(c->json, &end);
+    
     if(c->json == end)
         return LEPTP_PARSE_INVALID_VALUE;
+    
     if(isinf(v->n) || isnan(v->n))
         return LEPTP_PARSE_INVALID_VALUE;
+    
     if(end != NULL && end == p_ptr + 1)
         return LEPTP_PARSE_INVALID_VALUE;
+
+    if(c->json[0] == '0' && v->n !=0 || c->json[1] =='x')
+        return LEPTP_PARSE_ROOT_NOT_SINGULAR;
+
     c->json = end;
     v->type = LEPTP_NUMBER;
     return LEPTP_PARSE_OK;
