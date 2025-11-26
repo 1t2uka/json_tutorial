@@ -1,9 +1,11 @@
 #include "leptJsonp.h"
 #include <assert.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 #include <errno.h>
+#include <threads.h>
 
 //校验并推进json解析字符位置，搭配leptp_contect结构使用
 #define EXPECT(c,ch)    do{assert(*c->json == (ch)); c->json++;} while(0)
@@ -20,6 +22,7 @@ static void leptp_parse_whitespace(leptp_context *c){
     c->json = p;
 }
 
+#if 0
 //判断类型null
 static int leptp_parse_null(leptp_context *c, leptp_value *v) {
     EXPECT(c,'n');
@@ -48,6 +51,21 @@ static int leptp_parse_false(leptp_context *c, leptp_value *v) {
     v->type = LEPTP_FALSE;
     return LEPTP_PARSE_OK;
 }
+#endif
+
+static int letpt_parse_literal(leptp_context *c, leptp_value *v, const char* literal, leptp_type type){
+    size_t i ;
+    //EXPECT宏会将c后移一位
+    EXPECT(c,literal[0]);
+    for(i = 0; literal[i+1]; ++i)
+        if(c->json[i] != literal[i+1])
+            return LEPTP_PARSE_INVALID_VALUE;
+
+    c->json += i;
+    v->type = type;
+    return LEPTP_PARSE_OK;
+
+} 
 
 //判断number类型——使用strtod()函数
 static int leptp_parse_number(leptp_context *c, leptp_value *v) {
@@ -90,9 +108,9 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
     switch(*c->json){
-        case 'n' : return leptp_parse_null(c,v);
-        case 't' : return leptp_parse_true(c,v);
-        case 'f' : return leptp_parse_false(c,v);
+        case 'n' : return letpt_parse_literal(c, v, "null", LEPTP_NULL);
+        case 't' : return letpt_parse_literal(c, v, "true", LEPTP_TRUE);
+        case 'f' : return letpt_parse_literal(c, v, "false", LEPTP_FALSE);
         default: return leptp_parse_number(c,v);
         case '\0' : return LEPTP_PARSE_EXPECT_VALUE;
     }
