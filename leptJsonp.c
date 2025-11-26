@@ -9,6 +9,9 @@
 
 //校验并推进json解析字符位置，搭配leptp_contect结构使用
 #define EXPECT(c,ch)    do{assert(*c->json == (ch)); c->json++;} while(0)
+//数字字符串检验宏
+#define ISDIGIT(ch)     ((ch) >= '0' && (ch) <= '9')
+#define ISDIGIT129(ch)  ((ch) >= '1' && (ch) <= '9')
 
 typedef struct {
     const char *json;
@@ -67,6 +70,7 @@ static int letpt_parse_literal(leptp_context *c, leptp_value *v, const char* lit
 
 } 
 
+#if 0
 //判断number类型——使用strtod()函数
 static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     char *end;
@@ -104,6 +108,52 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     v->type = LEPTP_NUMBER;
     return LEPTP_PARSE_OK;
 }
+//不符合编译器设计原理，鲁棒性较弱
+#endif
+
+static int leptp_parse_number(leptp_context *c, leptp_value *v) {
+    const char *p = c->json;
+    /* number = [ "-" ] int [ frac ] [ exp ]
+     * int = "0" / digit1-9 *digit
+     * frac = "." 1*digit
+     * exp = ("e" / "E") [ "-" / "+" ] 1*digit 
+     * 这个数字的判断是有先后顺序的
+     * */
+    /* 负号*/
+    if(*p == '-')
+        ++p;
+    /* 整数*/
+    if(*p == '0')
+        ++p;
+    else{
+        if(!ISDIGIT129(*p)) return LEPTP_PARSE_INVALID_VALUE;
+        for(p++;ISDIGIT(*p);p++);
+    }
+    /* 小数*/
+    if(*p == '.'){
+         ++p;
+        if(!ISDIGIT(*p))
+            return LEPTP_PARSE_INVALID_VALUE;
+        for(++p;ISDIGIT(*p);++p);
+    }
+    /* 指数*/
+    if(*p =='e' || *p == 'E'){
+        ++p;
+        if(*p == '+' || *p == '-')
+            ++p;
+        if(!ISDIGIT(*p))
+            return LEPTP_PARSE_INVALID_VALUE;
+        for(++p;ISDIGIT(*p);++p);
+    }
+    errno = 0;
+    v->n = strtod(c->json, NULL);
+    if(errno == ERANGE && (v->n == HUGE_VAL || v->n == -HUGE_VAL))
+        return LEPTP_PARSE_NUMBER_TOO_BIG;
+    v->type = LEPTP_NUMBER;
+    //同步c->json到结束后位置
+    c->json = p;
+    return LEPTP_PARSE_OK;
+}
 
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
@@ -126,8 +176,12 @@ int leptp_parse(leptp_value *v, const char *json){
     leptp_parse_whitespace(&c);
     if((ret=leptp_parse_value(&c,v)) == LEPTP_PARSE_OK){
         leptp_parse_whitespace(&c);
-        if(*c.json !='\0')
+        if(*c.json !='\0'){
+            //返回错误结果时要更新类型信息
+            v->type = LEPTP_NULL;
             return LEPTP_PARSE_ROOT_NOT_SINGULAR;
+        }
+
     }
     return ret;
 }
