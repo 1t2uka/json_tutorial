@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <errno.h>
 
 //校验并推进json解析字符位置，搭配leptp_contect结构使用
 #define EXPECT(c,ch)    do{assert(*c->json == (ch)); c->json++;} while(0)
@@ -51,22 +52,34 @@ static int leptp_parse_false(leptp_context *c, leptp_value *v) {
 //判断number类型——使用strtod()函数
 static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     char *end;
+    errno = 0;
     if(c->json[0] == '+' || c->json[0] == '.')
         return LEPTP_PARSE_INVALID_VALUE;
 
     const char *p_ptr = strchr(c->json,'.');
     v->n = strtod(c->json, &end);
     
+    //非法值——字母开头的字符数组
     if(c->json == end)
         return LEPTP_PARSE_INVALID_VALUE;
     
+    //判断是否发生溢出
+    if(errno == ERANGE){
+        if(v->n == HUGE_VAL || v->n == -HUGE_VAL)
+            return LEPTP_PARSE_NUMBER_TOO_BIG;
+    }
+
+    //非法值——解析为inf或Nan
     if(isinf(v->n) || isnan(v->n))
         return LEPTP_PARSE_INVALID_VALUE;
     
+    //非法值——字符串中包含非数字字符
     if(end != NULL && end == p_ptr + 1)
         return LEPTP_PARSE_INVALID_VALUE;
 
-    if(c->json[0] == '0' && v->n !=0 || c->json[1] =='x')
+
+    //0开头或者0x的十六进制数
+    if(c->json[0] == '0' && (v->n !=0 || c->json[1] =='x'))
         return LEPTP_PARSE_ROOT_NOT_SINGULAR;
 
     c->json = end;
