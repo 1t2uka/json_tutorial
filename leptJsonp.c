@@ -13,6 +13,9 @@
 #define ISDIGIT(ch)     ((ch) >= '0' && (ch) <= '9')
 #define ISDIGIT129(ch)  ((ch) >= '1' && (ch) <= '9')
 
+//初始化宏
+#define leptp_set_null(v) leptp_free(v)
+
 typedef struct {
     const char *json;
 }leptp_context;
@@ -25,37 +28,7 @@ static void leptp_parse_whitespace(leptp_context *c){
     c->json = p;
 }
 
-#if 0
-//判断类型null
-static int leptp_parse_null(leptp_context *c, leptp_value *v) {
-    EXPECT(c,'n');
-    if(c->json[0] != 'u' || c->json[1] != 'l' || c->json[2] != 'l')
-        return LEPTP_PARSE_INVALID_VALUE;
-    c->json += 3;
-    v->type = LEPTP_NULL;
-    return LEPTP_PARSE_OK;
-}
-
-//判断true类型
-static int leptp_parse_true(leptp_context *c, leptp_value *v) {
-    EXPECT(c,'t');
-    if(c->json[0] != 'r' || c->json[1] != 'u' || c->json[2] != 'e')
-        return LEPTP_PARSE_INVALID_VALUE;
-    c->json += 3;
-    v->type = LEPTP_TRUE;
-    return LEPTP_PARSE_OK;
-}
-//判断false类型
-static int leptp_parse_false(leptp_context *c, leptp_value *v) {
-    EXPECT(c,'f');
-    if(c->json[0] != 'a' || c->json[1] != 'l' || c->json[2] != 's' || c->json[3] != 'e')
-        return LEPTP_PARSE_INVALID_VALUE;
-    c->json += 4;
-    v->type = LEPTP_FALSE;
-    return LEPTP_PARSE_OK;
-}
-#endif
-
+//解析关键字null,true,false
 static int letpt_parse_literal(leptp_context *c, leptp_value *v, const char* literal, leptp_type type){
     size_t i ;
     //EXPECT宏会将c后移一位
@@ -146,8 +119,8 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
         for(++p;ISDIGIT(*p);++p);
     }
     errno = 0;
-    v->n = strtod(c->json, NULL);
-    if(errno == ERANGE && (v->n == HUGE_VAL || v->n == -HUGE_VAL))
+    v->u.n = strtod(c->json, NULL);
+    if(errno == ERANGE && (v->u.n == HUGE_VAL || v->u.n == -HUGE_VAL))
         return LEPTP_PARSE_NUMBER_TOO_BIG;
     v->type = LEPTP_NUMBER;
     //同步c->json到结束后位置
@@ -186,6 +159,13 @@ int leptp_parse(leptp_value *v, const char *json){
     return ret;
 }
 
+void leptp_free(leptp_value *v) {
+    assert(v != NULL);
+    if(v->type == LEPTP_STRING) //处理不同类型数据首先判读类型,非字符串则跳过释放内存步骤
+        free(v->u.s.s);
+    v->type = LEPTP_NULL;
+}
+
 //获取json数据类型
 leptp_type leptp_get_type(const leptp_value *v){
     assert(v != NULL);
@@ -195,5 +175,37 @@ leptp_type leptp_get_type(const leptp_value *v){
 //获取数字
 double leptp_get_number(const leptp_value *v){
     assert( v!= NULL && v->type == LEPTP_NUMBER );
-    return v->n;
+    return v->u.n;
+}
+void leptp_set_number(leptp_value *v, double n){
+    leptp_free(v);
+    v->u.n = n;
+    v->type = LEPTP_NUMBER;
+}
+
+int leptp_get_boolean(const leptp_value *v){
+   assert(v != NULL && (v->type == LEPTP_TRUE || v->type == LEPTP_FALSE));
+   return v->type == LEPTP_TRUE;
+}
+void leptp_set_boolean(leptp_value *v, int b){
+    leptp_free(v);
+    v->type = b ? LEPTP_TRUE : LEPTP_FALSE;
+}
+
+const char* leptp_get_string(const leptp_value *v) {
+    assert(v != NULL && v->type == LEPTP_STRING);
+    return v->u.s.s;
+}
+size_t leptp_get_string_length(const leptp_value *v) {
+    assert(v != NULL && v->type == LEPTP_STRING);
+    return v->u.s.len;
+}
+void leptp_set_string(leptp_value *v, const char *s, size_t len) {
+    assert(v != NULL && (s != NULL || len == 0)); //确保v不是空指针，并且源字符串要么非空，要么为'\0'
+    leptp_free(v);
+    v->u.s.s = (char*)malloc(len + 1); //malloc类似与new ,但返回void*需要强制类型转换
+    memcpy(v->u.s.s, s, len); //void *memcpy(void *dest,const void *src, size_t n);不依赖结束符'\0'可以处理更宽泛的内存拷贝
+    v->u.s.s[len] = '\0';
+    v->u.s.len = len;
+    v->type = LEPTP_STRING;
 }
