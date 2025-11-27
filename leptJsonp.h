@@ -1,6 +1,6 @@
 #ifndef LEPTJSONP_H__
 #define LEPTJSONP_H__
-
+#include <stddef.h>
 //定义json数据类型
 typedef enum{
     LEPTP_NULL, 
@@ -12,11 +12,25 @@ typedef enum{
     LEPTP_OBJECT
 } leptp_type;
 
+#if 0
 //定义json结构，仅含json类型数据
 typedef struct {
     double n;
     leptp_type type;
+    //添加成员支持字符串表示
+    char *s;
+    size_t len;
 }leptp_value;
+#endif
+
+//使用union节省内存
+typedef struct {
+    union {
+        struct{char *s; size_t len;}s;   //string
+        double n;                       //number
+    } u;
+    leptp_type type;
+} leptp_value;
 
 //定义词法分析器返回结果
 enum {
@@ -29,10 +43,21 @@ enum {
 
 //json解析器
 int leptp_parse(leptp_value *v, const char *json);
-
 //获取json数据类型
 leptp_type leptp_get_type(const leptp_value *v);
+void leptp_free(leptp_value *v);
+
+#define leptp_init(v) do{(v)->type = LEPTP_NULL;}while(0)
+
+#define leptp_set_null(v) leptp_free(v)
+
+int leptp_get_boolean(const leptp_value *v);
+void leptp_set_boolean(leptp_value *v, int b);
 
 double leptp_get_number(const leptp_value *v);
+void leptp_set_number(leptp_value *v, double n);
 
+const char* leptp_get_string(const leptp_value *v);
+size_t leptp_get_string_length(const leptp_value *v);
+void leptp_set_string(leptp_value *v, const char *s, size_t len);
 #endif
