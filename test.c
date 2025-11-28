@@ -219,7 +219,7 @@ static void test_access_string() {
 static void test_parse(){
     test_parse_literal();
     test_parse_number();
-    //test_parse_string();
+    test_parse_string();
 
     test_parse_expect_value();
     test_parse_invalid_value();

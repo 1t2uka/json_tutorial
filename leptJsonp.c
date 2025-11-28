@@ -13,11 +13,17 @@
 #define ISDIGIT(ch)     ((ch) >= '0' && (ch) <= '9')
 #define ISDIGIT129(ch)  ((ch) >= '1' && (ch) <= '9')
 
-//初始化宏
-#define leptp_set_null(v) leptp_free(v)
+#ifndef LEPTP_PARSE_STACK_INIT_SIZE 
+#define LEPTP_PARSE_STACK_INIT_SIZE 256
+#endif 
+
+//单个字符入栈并获取该字符内容
+#define PUTC(c, ch) do{ *(char*)leptp_context_push(c,sizeof(char)) = (ch); }while(0)
 
 typedef struct {
     const char *json;
+    char *stack;
+    size_t size, top;
 }leptp_context;
 
 //跳过空格
@@ -128,14 +134,57 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     return LEPTP_PARSE_OK;
 }
 
+//出入栈操作
+static void* leptp_context_push(leptp_context *c, size_t size) {
+    void* ret;
+    assert(size > 0);
+    if(c->top + size >= c->size){
+        if(c->size == 0)
+            c->size = LEPTP_PARSE_STACK_INIT_SIZE;  //栈空时使用默认值初始化
+        while(c->top + size >= c->size)
+            c->size += c->size >> 1;    //以1.5倍扩容直到能够承载入栈类型大小
+        c->stack = (char*)realloc(c->stack,c->size);
+    }
+    ret = c->stack + c->top;
+    c->top += size;
+    return ret;
+}
+
+static void* leptp_context_pop(leptp_context *c, size_t size) {
+    assert(c->top >= size); //断言要出栈部分大小大于要求内存空间大小，避免栈底后继续出栈导致段错误
+    return c->stack + (c->top -= size);
+}
+
+static int leptp_parse_string(leptp_context *c, leptp_value *v) {
+    size_t head = c->top, len;
+    const char *p;    //保证不改变c->json的前提下记录解析位置
+    EXPECT(c,'\"'); //首先判断\"开头，保证第一次入栈为\"且保证后续读取下一个字符的判断逻辑
+    p = c->json;
+    while(1){
+        char ch = *p++; //读取下一个字符并进行逻辑判断
+        switch(ch){
+            case '\"':
+                len = c->top - head; 
+                leptp_set_string(v, (char*)leptp_context_pop(c,len), len);
+                c->json = p;    //推进主指针到闭合引号后
+                return LEPTP_PARSE_OK;
+            case '\0':
+                c->top = head;
+                return LEPTP_PARSE_MISS_QUOTATION_MARK;
+            default:
+                PUTC(c,ch);
+        }
+    }
+}
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
     switch(*c->json){
         case 'n' : return letpt_parse_literal(c, v, "null", LEPTP_NULL);
         case 't' : return letpt_parse_literal(c, v, "true", LEPTP_TRUE);
         case 'f' : return letpt_parse_literal(c, v, "false", LEPTP_FALSE);
+        case '"' : return leptp_parse_string(c, v);  
+        case '\0': return LEPTP_PARSE_EXPECT_VALUE;
         default: return leptp_parse_number(c,v);
-        case '\0' : return LEPTP_PARSE_EXPECT_VALUE;
     }
 }
 
@@ -143,11 +192,14 @@ static int leptp_parse_value(leptp_context *c, leptp_value *v) {
 int leptp_parse(leptp_value *v, const char *json){
     leptp_context c;
     int ret;
-    assert( v != NULL );
-    c.json = json;
-    v->type = LEPTP_NULL;
+    assert(v != NULL);
+    c.json = json;  
+    c.stack = NULL;     //初始化动态栈,后续push时，首次操作为realloc(NULL.size) 等效于malloc(size)避免单独操作
+    c.size = c.top = 0;
+    leptp_init(v);
     leptp_parse_whitespace(&c);
-    if((ret=leptp_parse_value(&c,v)) == LEPTP_PARSE_OK){
+    ret = leptp_parse_value(&c,v);
+    if(ret == LEPTP_PARSE_OK){
         leptp_parse_whitespace(&c);
         if(*c.json !='\0'){
             //返回错误结果时要更新类型信息
@@ -155,9 +207,14 @@ int leptp_parse(leptp_value *v, const char *json){
             return LEPTP_PARSE_ROOT_NOT_SINGULAR;
         }
 
+    } else{
+        v->type = LEPTP_NULL;
     }
+    assert(c.top == 0);
+    free(c.stack);  //当断言当前栈空时释放动态栈空间
     return ret;
 }
+
 
 void leptp_free(leptp_value *v) {
     assert(v != NULL);
