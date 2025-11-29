@@ -155,11 +155,33 @@ static void* leptp_context_pop(leptp_context *c, size_t size) {
     return c->stack + (c->top -= size);
 }
 
+static int leptp_parse_escape_string(leptp_context *c, const char **p) {
+    const char *q = *p; //p是保存leptp_parse_string中p指针的地址，*p即获取该地址
+    char ch = *q++; /* 读取并消费转义后的字符 */
+    switch (ch) {
+        case '\"': PUTC(c, '\"'); break;
+        case '\\': PUTC(c, '\\'); break;
+        case '/':  PUTC(c, '/');  break;
+        case 'b':  PUTC(c, '\b'); break;
+        case 'f':  PUTC(c, '\f'); break;
+        case 'n':  PUTC(c, '\n'); break;
+        case 'r':  PUTC(c, '\r'); break;
+        case 't':  PUTC(c, '\t'); break;
+#if 0
+        case '\u':
+#endif
+        default: return LEPTP_PARSE_INVALID_STRING_ESCAPE;
+    }
+    *p = q; //局部指针传回给调用者
+    return LEPTP_PARSE_OK;
+}
+
 static int leptp_parse_string(leptp_context *c, leptp_value *v) {
     size_t head = c->top, len;
     const char *p;    //保证不改变c->json的前提下记录解析位置
     EXPECT(c,'\"'); //首先判断\"开头，保证第一次入栈为\"且保证后续读取下一个字符的判断逻辑
     p = c->json;
+    int ret;
     while(1){
         char ch = *p++; //读取下一个字符并进行逻辑判断
         switch(ch){
@@ -171,7 +193,17 @@ static int leptp_parse_string(leptp_context *c, leptp_value *v) {
             case '\0':
                 c->top = head;
                 return LEPTP_PARSE_MISS_QUOTATION_MARK;
+            case '\\':
+                ret = leptp_parse_escape_string(c,&p);
+                if(ret != LEPTP_PARSE_OK){
+                    c->top = head;
+                    return ret;
+                }
+                break;
             default:
+                if((unsigned char)ch < 0x20) {
+                    return LEPTP_PARSE_INVALID_STRING_CHAR;  
+                }
                 PUTC(c,ch);
         }
     }
@@ -204,6 +236,7 @@ int leptp_parse(leptp_value *v, const char *json){
         if(*c.json !='\0'){
             //返回错误结果时要更新类型信息
             v->type = LEPTP_NULL;
+            free(c.stack);
             return LEPTP_PARSE_ROOT_NOT_SINGULAR;
         }
 
