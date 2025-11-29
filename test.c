@@ -77,12 +77,10 @@ static void test_parse_literal() {
 }
 
 static void test_parse_string() {
-    TEST_STRING("","\"\"");
-    TEST_STRING("Hello","\"Hello\"");
-#if 0
-    TEST_STRING("Hello\nWorld","Hello\\nWorld\"");
-    TEST_STRING("\" \\ / \b \f \n \r \t","\"\\\" \\\\ \\/ \\b \\f \\n \\r \\t\"");
-#endif
+    TEST_STRING("", "\"\"");
+    TEST_STRING("Hello", "\"Hello\"");
+    TEST_STRING("Hello\nWorld", "\"Hello\\nWorld\"");          /* <- 修复：加上起始/结束引号并转义 \n */
+    TEST_STRING("\" \\ / \b \f \n \r \t", "\"\\\" \\\\ \\/ \\b \\f \\n \\r \\t\""); /* 保持转义正确 */
 }
 
 static void test_parse_expect_value(){
@@ -160,20 +158,16 @@ static void test_parse_missing_quotation_mark() {
 
 //无效转义字符
 static void test_parse_invalie_string_escape() {
-#if 0
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_ESCAPE, "\"\\v\"");
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_ESCAPE, "\"\\'\"");
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_ESCAPE, "\"\\0\"");
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_ESCAPE, "\"\\x12\"");
-#endif
 }
 
 //无效字符串字符
 static void test_parse_invalid_string_char() {
-#if 0
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_CHAR, "\"\x01\"");
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_CHAR, "\"\x1F\"");
-#endif
 }
 
 static void test_access_null(){
