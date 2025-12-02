@@ -1,5 +1,6 @@
 #include "leptJsonp.h"
 #include <assert.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,9 @@
 
 //单个字符入栈并获取该字符内容
 #define PUTC(c, ch) do{ *(char*)leptp_context_push(c,sizeof(char)) = (ch); }while(0)
+
+//字符类型解析错误时处理宏
+#define STRING_ERROR(ret) do{ c->top = head; return ret; }while(0)
 
 typedef struct {
     const char *json;
@@ -155,9 +159,74 @@ static void* leptp_context_pop(leptp_context *c, size_t size) {
     return c->stack + (c->top -= size);
 }
 
+//获取十六进制数值
+static const char* leptp_parse_hex4(const char *p, unsigned *u) {
+    unsigned code = 0;
+    for(int i = 0; i < 4; ++i){
+        char ch = *p++;
+        unsigned base;
+        if(ISDIGIT(ch)){
+            base = ch - '0';
+        }
+        else if(ch >= 'a' && ch <= 'f'){
+            base = ch - 'a' + 10;
+        }
+        else if(ch >= 'A' && ch <= 'F'){
+            base = ch - 'A' + 10;
+        }
+        else 
+            return NULL;
+        
+        code =(code << 4) | base;
+    }
+    *u = code;
+    return p;
+}
+
+static void leptp_encode_utf8(leptp_context *c, unsigned u) {
+    assert(u <= 0x10FFFF);
+    if(u <= 0x7F){  //0x0~7F为一字节数，基本拉丁字符和ascii码
+        PUTC(c,(char)u);
+    } else if(u <= 0x7FF){  //0x80~0x7FF 两字节，拉丁字符扩展，希腊字母等
+        PUTC(c,(char)(0xC0 | ((u >> 6) & 0x1F))); //110+高5位
+        PUTC(c,(char)(0x80 | (u & 0x3F)));      //10+低6位
+    } else if(u <= 0xFFFF) {    //0x800~0xFFFF 三字节，常用汉字，日韩文
+        PUTC(c,(char)(0xE0 | ((u >>12) & 0x0F))); //1110+高4位
+        PUTC(c,(char)(0x80 | ((u >> 6) & 0x3F))); //10+中间6位
+        PUTC(c,(char)(0x80 |(u & 0x3F)));   //10+低6位
+    } else {    //0x10000~0x10FFFF 四字节，辅助平面字符
+        //PUTC(c,(char)(0xE0 | ((u >> 18) & 0x0F))); //1110+高3位
+        PUTC(c,(char)(0xF0 | ((u >> 18) & 0x07))); //11110+次高3位
+        PUTC(c,(char)(0x80 | ((u >> 12) & 0x3F)));   //10+中间6位
+        PUTC(c,(char)(0x80 | ((u >> 6) & 0x3F)));                                             //10+次低6位
+        PUTC(c,(char)(0x80 | (u & 0x3F)));  //10+低6位
+    }
+}
+
 static int leptp_parse_escape_string(leptp_context *c, const char **p) {
     const char *q = *p; //p是保存leptp_parse_string中p指针的地址，*p即获取该地址
     char ch = *q++; /* 读取并消费转义后的字符 */
+    if(ch == 'u'){
+        unsigned u;     //高位代理范围：0xD800~0xDBFF 低位代理范围：0xDC00~0xDFFF
+        const char *q2 = leptp_parse_hex4(q,&u);
+        if(!q2) return LEPTP_PARSE_INVALID_UNICODE_HEX;
+        if( u >= 0xD800 && u <= 0xDBFF) {
+            if(*q2 != '\\' || *(q2 + 1) != 'u') return LEPTP_PARSE_INVALID_UNICODE_HEX; //代理对处理，下一个转义字符必须以'\u'开头
+            unsigned low; //获取第二\u开头的转义序列，即代理对低位
+            const char *q3 = leptp_parse_hex4(q2 + 2, &low);    //q2指向当前转义字符的下一个字符，前两个字符已经判断为'\'和'u'
+            if(!q3) return LEPTP_PARSE_INVALID_UNICODE_HEX; //q3指向下一个字符开头，不能为NULL
+            if(!(low >= 0xDC00 && low <= 0xDFFF)) return LEPTP_PARSE_INVALID_UNICODE_HEX;
+            u = 0x10000 + (((u - 0xD800) << 10) | (low - 0xDC00));  //从u（0xD800~0xDBFF ）获取高十位(减去0xD800)和low获取低十位
+            leptp_encode_utf8(c,u);
+            *p = q3;    //移动栈顶至q3处，即下一个字符开头
+            return LEPTP_PARSE_OK;
+        } else {
+            leptp_encode_utf8(c,u);
+            *p = q2;
+            return LEPTP_PARSE_OK;
+        }
+    }
+
     switch (ch) {
         case '\"': PUTC(c, '\"'); break;
         case '\\': PUTC(c, '\\'); break;
@@ -167,9 +236,6 @@ static int leptp_parse_escape_string(leptp_context *c, const char **p) {
         case 'n':  PUTC(c, '\n'); break;
         case 'r':  PUTC(c, '\r'); break;
         case 't':  PUTC(c, '\t'); break;
-#if 0
-        case '\u':
-#endif
         default: return LEPTP_PARSE_INVALID_STRING_ESCAPE;
     }
     *p = q; //局部指针传回给调用者
@@ -178,6 +244,7 @@ static int leptp_parse_escape_string(leptp_context *c, const char **p) {
 
 static int leptp_parse_string(leptp_context *c, leptp_value *v) {
     size_t head = c->top, len;
+    unsigned u;     //存储unicode4位十六进制数转换后的十进制数
     const char *p;    //保证不改变c->json的前提下记录解析位置
     EXPECT(c,'\"'); //首先判断\"开头，保证第一次入栈为\"且保证后续读取下一个字符的判断逻辑
     p = c->json;
@@ -191,13 +258,11 @@ static int leptp_parse_string(leptp_context *c, leptp_value *v) {
                 c->json = p;    //推进主指针到闭合引号后
                 return LEPTP_PARSE_OK;
             case '\0':
-                c->top = head;
-                return LEPTP_PARSE_MISS_QUOTATION_MARK;
+                STRING_ERROR(LEPTP_PARSE_MISS_QUOTATION_MARK);
             case '\\':
                 ret = leptp_parse_escape_string(c,&p);
                 if(ret != LEPTP_PARSE_OK){
-                    c->top = head;
-                    return ret;
+                    STRING_ERROR(ret);
                 }
                 break;
             default:
