@@ -30,6 +30,11 @@ typedef struct {
     size_t size, top;
 }leptp_context;
 
+/*
+ * 基础静态函数组，用于处理关键字null,false,true以及空格
+ * 由于其原子性，后续字符串，数组以及对象都会间接使用，故
+ * 遵循局部性原理，定义在文件较前处
+ * */
 //跳过空格
 static void leptp_parse_whitespace(leptp_context *c){
     const char *p = c->json;
@@ -94,6 +99,9 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
 //不符合编译器设计原理，鲁棒性较弱
 #endif
 
+/*
+ * 数字解析相关函数
+ * */
 static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     const char *p = c->json;
     /* number = [ "-" ] int [ frac ] [ exp ]
@@ -138,6 +146,9 @@ static int leptp_parse_number(leptp_context *c, leptp_value *v) {
     return LEPTP_PARSE_OK;
 }
 
+/*
+ * 字符串解析函数组
+ * */
 //出入栈操作
 static void* leptp_context_push(leptp_context *c, size_t size) {
     void* ret;
@@ -273,6 +284,24 @@ static int leptp_parse_string(leptp_context *c, leptp_value *v) {
         }
     }
 }
+
+/*
+ * 数组解析函数
+ * */
+static int leptp_parse_value(leptp_context* c, leptp_value* v);
+
+static int leptp_parse_array(leptp_context* c, leptp_value* v) {
+
+}
+
+/*
+ * 对象解析函数
+ * */
+
+
+/*
+ * 解析主函数
+ * */
 //判断json数据类型
 static int leptp_parse_value(leptp_context *c, leptp_value *v) {
     switch(*c->json){
@@ -313,7 +342,9 @@ int leptp_parse(leptp_value *v, const char *json){
     return ret;
 }
 
-
+/*
+ * API
+ * */
 void leptp_free(leptp_value *v) {
     assert(v != NULL);
     if(v->type == LEPTP_STRING) //处理不同类型数据首先判读类型,非字符串则跳过释放内存步骤
@@ -332,6 +363,7 @@ double leptp_get_number(const leptp_value *v){
     assert( v!= NULL && v->type == LEPTP_NUMBER );
     return v->u.n;
 }
+
 void leptp_set_number(leptp_value *v, double n){
     leptp_free(v);
     v->u.n = n;
@@ -342,6 +374,7 @@ int leptp_get_boolean(const leptp_value *v){
    assert(v != NULL && (v->type == LEPTP_TRUE || v->type == LEPTP_FALSE));
    return v->type == LEPTP_TRUE;
 }
+
 void leptp_set_boolean(leptp_value *v, int b){
     leptp_free(v);
     v->type = b ? LEPTP_TRUE : LEPTP_FALSE;
@@ -351,10 +384,12 @@ const char* leptp_get_string(const leptp_value *v) {
     assert(v != NULL && v->type == LEPTP_STRING);
     return v->u.s.s;
 }
+
 size_t leptp_get_string_length(const leptp_value *v) {
     assert(v != NULL && v->type == LEPTP_STRING);
     return v->u.s.len;
 }
+
 void leptp_set_string(leptp_value *v, const char *s, size_t len) {
     assert(v != NULL && (s != NULL || len == 0)); //确保v不是空指针，并且源字符串要么非空，要么为'\0'
     leptp_free(v);
@@ -363,4 +398,15 @@ void leptp_set_string(leptp_value *v, const char *s, size_t len) {
     v->u.s.s[len] = '\0';
     v->u.s.len = len;
     v->type = LEPTP_STRING;
+}
+
+size_t leptp_get_array_size(const leptp_value* v) {
+    assert(v != NULL && v->type == LEPTP_ARRAY);
+    return v->u.a.size;
+}
+
+leptp_value* leptp_get_array_element(const leptp_value* v, size_t index) {
+    assert(v != NULL && v->type == LEPTP_ARRAY);
+    assert(index < v->u.a.size);
+    return &v->u.a.e[index];
 }
