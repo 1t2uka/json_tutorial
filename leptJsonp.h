@@ -23,14 +23,17 @@ typedef struct {
 }leptp_value;
 #endif
 
+//leptp_value使用自身类型指针，需向前声明
+typedef struct leptp_value leptp_value;
 //使用union节省内存
-typedef struct {
+struct leptp_value {
     union {
-        struct{char *s; size_t len;}s;   //string
+        struct { leptp_value* e; size_t size; }a;//array,e is element
+        struct {char *s; size_t len;}s;   //string
         double n;                       //number
     } u;
     leptp_type type;
-} leptp_value;
+};
 
 //定义词法分析器返回结果
 enum {
@@ -56,6 +59,7 @@ void leptp_free(leptp_value *v);
 
 #define leptp_set_null(v) leptp_free(v)
 
+//API
 int leptp_get_boolean(const leptp_value *v);
 void leptp_set_boolean(leptp_value *v, int b);
 
@@ -65,4 +69,7 @@ void leptp_set_number(leptp_value *v, double n);
 const char* leptp_get_string(const leptp_value *v);
 size_t leptp_get_string_length(const leptp_value *v);
 void leptp_set_string(leptp_value *v, const char *s, size_t len);
+
+size_t leptp_get_array_size(const leptp_value* v);
+leptp_value* leptp_get_array_element(const leptp_value* v, size_t index); 
 #endif
