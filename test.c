@@ -69,6 +69,12 @@ static int test_pass = 0;   //通过测试数量
         leptp_free(&v);\
     }while(0)
 
+#if defined(__MCS_VER)
+#define EXPECT_EQ_SIZE_T(expect, actual) EXPECT_EQ_BASE((expect) == (actual) ,(size_t)expect, (size_t)actual, "%Iu")
+#else
+#define EXPECT_EQ_SIZE_T(expect, actual) EXPECT_EQ_BASE((expect) == (actual), (size_t)expect, (size_t)actual, "%zu")
+#endif
+
 //测试对null字面值解析是否正确
 static void test_parse_literal() {
     TEST_LITERAL(LEPTP_NULL, "null");
@@ -88,6 +94,16 @@ static void test_parse_string() {
     TEST_STRING("\xF0\x9D\x84\x9E", "\"\\uD834\\uDD1E\"");  /* G clef sign U+1D11E */
     TEST_STRING("\xF0\x9D\x84\x9E", "\"\\ud834\\udd1e\"");  /* G clef sign U+1D11E */
 
+}
+
+static void test_parse_array() {
+    leptp_value v;
+
+    leptp_init(&v);
+    EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v, "[  ]"));
+    EXPECT_EQ_INT(LEPTP_ARRAY, leptp_get_type(&v));
+    EXPECT_EQ_SIZE_T(0, leptp_get_array_size(&v));
+    leptp_free(&v);
 }
 
 static void test_parse_expect_value(){
@@ -231,6 +247,8 @@ static void test_parse(){
     test_parse_missing_quotation_mark();
     test_parse_invalie_string_escape();
     test_parse_invalid_string_char();
+
+//    test_parse_array();
 
 }
 
