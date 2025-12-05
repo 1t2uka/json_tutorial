@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -97,12 +98,42 @@ static void test_parse_string() {
 }
 
 static void test_parse_array() {
+    size_t i, j;
     leptp_value v;
 
     leptp_init(&v);
     EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v, "[  ]"));
     EXPECT_EQ_INT(LEPTP_ARRAY, leptp_get_type(&v));
     EXPECT_EQ_SIZE_T(0, leptp_get_array_size(&v));
+    leptp_free(&v);
+
+    leptp_init(&v);
+    EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v, "[ null , false , true , 123 , \"abc\" ]"));
+    EXPECT_EQ_INT(LEPTP_ARRAY, leptp_get_type(&v));
+    EXPECT_EQ_SIZE_T(5, leptp_get_array_size(&v));
+    EXPECT_EQ_INT(LEPTP_NULL, leptp_get_type(leptp_get_array_element(&v,0)));
+    EXPECT_EQ_INT(LEPTP_FALSE, leptp_get_type(leptp_get_array_element(&v, 1)));
+    EXPECT_EQ_INT(LEPTP_TRUE, leptp_get_type(leptp_get_array_element(&v, 2)));
+    EXPECT_EQ_INT(LEPTP_NUMBER, leptp_get_type(leptp_get_array_element(&v, 3)));
+    EXPECT_EQ_INT(LEPTP_STRING, leptp_get_type(leptp_get_array_element(&v,4)));
+    EXPECT_EQ_DOUBLE(123.0, leptp_get_number(leptp_get_array_element(&v, 3)));
+    EXPECT_EQ_STRING("abc", leptp_get_string(leptp_get_array_element(&v, 4)), leptp_get_string_length(leptp_get_array_element(&v, 4)));
+    leptp_free(&v);
+
+    leptp_init(&v);
+    EXPECT_EQ_INT(LEPTP_PARSE_OK, leptp_parse(&v, "[ [  ] , [ 0 ] , [ 0 , 1 ] , [ 0, 1 , 2 ] ]"));
+    EXPECT_EQ_INT(LEPTP_ARRAY, leptp_get_type(&v));
+    EXPECT_EQ_SIZE_T(4, leptp_get_array_size(&v));
+    for(i = 0; i < 4; ++i) {
+        leptp_value* a = leptp_get_array_element(&v, i);
+        EXPECT_EQ_INT(LEPTP_ARRAY, leptp_get_type(a));
+        EXPECT_EQ_SIZE_T(i, leptp_get_array_size(a));
+        for(j = 0; j < i; ++j) { 
+            leptp_value* e = leptp_get_array_element(a, j);
+            EXPECT_EQ_INT(LEPTP_NUMBER, leptp_get_type(e));
+            EXPECT_EQ_DOUBLE((double)j, leptp_get_number(e));
+        }
+    }
     leptp_free(&v);
 }
 
@@ -123,6 +154,11 @@ static void test_parse_invalid_value(){
     TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "inf");
     TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "NAN");
     TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "nan");
+
+#if 0
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "[1,]");
+    TEST_ERROR(LEPTP_PARSE_INVALID_VALUE, "[\"a\,nul]");
+#endif
 }
 
 static void test_parse_root_not_singular(){
@@ -193,6 +229,38 @@ static void test_parse_invalid_string_char() {
     TEST_ERROR(LEPTP_PARSE_INVALID_STRING_CHAR, "\"\x1F\"");
 }
 
+static void test_parse_invalid_unicode_hex() {
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u0\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u01\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u012\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u/000\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\uG000\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u0/00\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u0G00\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u00/0\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u00G0\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u000/\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u000G\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_HEX, "\"\\u 123\"");
+}
+
+static void test_parse_invalid_unicode_surrogate() {
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uD800\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uDBFF\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uD800\\\\\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uD800\\uDBFF\"");
+    TEST_ERROR(LEPTP_PARSE_INVALID_UNICODE_SURROGATE, "\"\\uD800\\uE000\"");
+}
+
+static void test_parse_miss_comma_or_square_bracket() {
+#if 0
+    TEST_ERROR(LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1");
+    TEST_ERROR(LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1}");
+    TEST_ERROR(LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[1 2");
+    TEST_ERROR(LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET, "[[]");
+#endif
+}
 static void test_access_null(){
     leptp_value v;
     leptp_init(&v);
@@ -237,6 +305,7 @@ static void test_parse(){
     test_parse_literal();
     test_parse_number();
     test_parse_string();
+    test_parse_array();
 
     test_parse_expect_value();
     test_parse_invalid_value();
@@ -247,8 +316,11 @@ static void test_parse(){
     test_parse_missing_quotation_mark();
     test_parse_invalie_string_escape();
     test_parse_invalid_string_char();
+    test_parse_invalid_unicode_hex();
+    test_parse_invalid_unicode_surrogate();
 
-//    test_parse_array();
+    test_parse_miss_comma_or_square_bracket();
+
 
 }
 
