@@ -27,4 +27,16 @@
 + [] 以cpp语言改写，尽可能体现cpp特性
 
 
-测试：需在当前shell下指定`export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH`
+运行：需在当前shell下临时修改动态库搜索路径，将当前目录添加到动态链接库搜索路径最前面
+```bash
+#
+export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH
+
+```
+
+内存泄漏检查：
+使用`valgrind`工具，运行命令时添加相关参数即可，例：
+```bash
+valgrind --lead-check=full ./test #test有执行权限
+
+```
