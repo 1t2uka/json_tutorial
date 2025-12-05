@@ -1,6 +1,10 @@
 #ifndef LEPTJSONP_H__
 #define LEPTJSONP_H__
 #include <stddef.h>
+
+#define leptp_init(v) do{(v)->type = LEPTP_NULL;}while(0)
+#define leptp_set_null(v) leptp_free(v)
+
 //定义json数据类型
 typedef enum{
     LEPTP_NULL, 
@@ -46,7 +50,8 @@ enum {
     LEPTP_PARSE_INVALID_STRING_CHAR,
     LEPTP_PARSE_INVALID_STRING_ESCAPE,
     LEPTP_PARSE_INVALID_UNICODE_SURROGATE, //欠缺低代理项或低代理项不在合法码点范围
-    LEPTP_PARSE_INVALID_UNICODE_HEX //\u后不是4位十六进制数
+    LEPTP_PARSE_INVALID_UNICODE_HEX,//\u后不是4位十六进制数
+    LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET
 };
 
 //json解析器
@@ -54,10 +59,6 @@ int leptp_parse(leptp_value *v, const char *json);
 //获取json数据类型
 leptp_type leptp_get_type(const leptp_value *v);
 void leptp_free(leptp_value *v);
-
-#define leptp_init(v) do{(v)->type = LEPTP_NULL;}while(0)
-
-#define leptp_set_null(v) leptp_free(v)
 
 //API
 int leptp_get_boolean(const leptp_value *v);
