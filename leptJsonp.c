@@ -1,5 +1,6 @@
 #include "leptJsonp.h"
 #include <assert.h>
+#include <bits/posix2_lim.h>
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -220,13 +221,14 @@ static int leptp_parse_escape_string(leptp_context *c, const char **p) {
     if(ch == 'u'){
         unsigned u;     //高位代理范围：0xD800~0xDBFF 低位代理范围：0xDC00~0xDFFF
         const char *q2 = leptp_parse_hex4(q,&u);
-        if(!q2) return LEPTP_PARSE_INVALID_UNICODE_HEX;
+        if(!q2) return LEPTP_PARSE_INVALID_UNICODE_HEX; //非4位16进制数
+        //欠缺低代理或低代理不合法
         if( u >= 0xD800 && u <= 0xDBFF) {
-            if(*q2 != '\\' || *(q2 + 1) != 'u') return LEPTP_PARSE_INVALID_UNICODE_HEX; //代理对处理，下一个转义字符必须以'\u'开头
+            if(*q2 != '\\' || *(q2 + 1) != 'u') return LEPTP_PARSE_INVALID_UNICODE_SURROGATE; //代理对处理，下一个转义字符必须以'\u'开头
             unsigned low; //获取第二\u开头的转义序列，即代理对低位
             const char *q3 = leptp_parse_hex4(q2 + 2, &low);    //q2指向当前转义字符的下一个字符，前两个字符已经判断为'\'和'u'
-            if(!q3) return LEPTP_PARSE_INVALID_UNICODE_HEX; //q3指向下一个字符开头，不能为NULL
-            if(!(low >= 0xDC00 && low <= 0xDFFF)) return LEPTP_PARSE_INVALID_UNICODE_HEX;
+            if(!q3) return LEPTP_PARSE_INVALID_UNICODE_SURROGATE; //q3指向下一个字符开头，不能为NULL
+            if(!(low >= 0xDC00 && low <= 0xDFFF)) return LEPTP_PARSE_INVALID_UNICODE_SURROGATE;
             u = 0x10000 + (((u - 0xD800) << 10) | (low - 0xDC00));  //从u（0xD800~0xDBFF ）获取高十位(减去0xD800)和low获取低十位
             leptp_encode_utf8(c,u);
             *p = q3;    //移动栈顶至q3处，即下一个字符开头
@@ -291,7 +293,54 @@ static int leptp_parse_string(leptp_context *c, leptp_value *v) {
 static int leptp_parse_value(leptp_context* c, leptp_value* v);
 
 static int leptp_parse_array(leptp_context* c, leptp_value* v) {
+    size_t i, size = 0;
+    int ret;
+    EXPECT(c,'[');  //数组是以[]包裹的
+    leptp_parse_whitespace(c);
+    if(*c->json == ']') {   //空数组情况，仅有[]
+        c->json++;
+        v->type = LEPTP_ARRAY;
+        v->u.a.size = 0;
+        v->u.a.e = NULL;
+        return LEPTP_PARSE_OK;
+    }
 
+    /**
+     * 修改return位置，当前解析错误时break,
+     * 离开循环后再return,避免中途解析失败return后
+     * 将部分未完全解析的部分积压在堆栈中
+     */
+    while(1) {
+        leptp_value e;
+        leptp_init(&e);
+        ret = leptp_parse_value(c, &e); //解析叶子节点
+        if(ret != LEPTP_PARSE_OK)
+            break;
+        memcpy(leptp_context_push(c,sizeof(leptp_value)), &e, sizeof(leptp_value));
+        ++size;
+        leptp_parse_whitespace(c);  //元素后解析空格
+        if(*c->json == ','){
+            ++c->json;
+            leptp_parse_whitespace(c);  //,后解析空格
+        }
+        else if(*c->json == ']'){
+            ++c->json;
+            v->type = LEPTP_ARRAY;
+            v->u.a.size = size;
+            size *= sizeof(leptp_value);
+            v->u.a.e = (leptp_value*) malloc(size);
+            memcpy(v->u.a.e, leptp_context_pop(c, size), size);
+            return LEPTP_PARSE_OK;
+        }
+        else {
+            ret = LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET;
+            break;    
+         }
+    }
+
+    for(i = 0; i < size; ++i)
+        leptp_free((leptp_value*)leptp_context_pop(c, sizeof(leptp_value)));
+    return ret;
 }
 
 /*
@@ -309,6 +358,7 @@ static int leptp_parse_value(leptp_context *c, leptp_value *v) {
         case 't' : return letpt_parse_literal(c, v, "true", LEPTP_TRUE);
         case 'f' : return letpt_parse_literal(c, v, "false", LEPTP_FALSE);
         case '"' : return leptp_parse_string(c, v);  
+        case '[' : return leptp_parse_array(c, v);
         case '\0': return LEPTP_PARSE_EXPECT_VALUE;
         default: return leptp_parse_number(c,v);
     }
@@ -346,9 +396,20 @@ int leptp_parse(leptp_value *v, const char *json){
  * API
  * */
 void leptp_free(leptp_value *v) {
+    size_t i;
     assert(v != NULL);
-    if(v->type == LEPTP_STRING) //处理不同类型数据首先判读类型,非字符串则跳过释放内存步骤
-        free(v->u.s.s);
+    switch(v->type) {
+        case LEPTP_STRING:
+            free(v->u.s.s);
+            break;
+        case LEPTP_ARRAY:
+            for(int i = 0; i < v->u.a.size; ++i)
+                leptp_free(&v->u.a.e[i]);
+            free(v->u.a.e);
+            break;
+        default:
+            break;
+    }
     v->type = LEPTP_NULL;
 }
 
