@@ -29,14 +29,23 @@ typedef struct {
 
 //leptp_value使用自身类型指针，需向前声明
 typedef struct leptp_value leptp_value;
+typedef struct leptp_member leptp_member;
 //使用union节省内存
 struct leptp_value {
     union {
+        struct { leptp_member* m; size_t size; }o;//member
         struct { leptp_value* e; size_t size; }a;//array,e is element
-        struct {char *s; size_t len;}s;   //string
+        struct { char* s; size_t len;}s;   //string
         double n;                       //number
     } u;
     leptp_type type;
+};
+
+//对象成员结构
+struct leptp_member {
+    char* k;    //键
+    size_t klen;    //键长
+    leptp_value v;  //值
 };
 
 //定义词法分析器返回结果
@@ -51,7 +60,10 @@ enum {
     LEPTP_PARSE_INVALID_STRING_ESCAPE,
     LEPTP_PARSE_INVALID_UNICODE_SURROGATE, //欠缺低代理项或低代理项不在合法码点范围
     LEPTP_PARSE_INVALID_UNICODE_HEX,//\u后不是4位十六进制数
-    LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET
+    LEPTP_PARSE_MISS_COMMA_OR_SQUARE_BRACKET,
+    LEPTP_PARSE_MISS_KEY,   //缺少键
+    LEPTP_PARSE_MISS_COLON, //缺少冒号
+    LEPTP_PARSE_MISS_COMMA_OR_CURLY_BRACKET //却好逗号或花括号
 };
 
 //json解析器
@@ -73,4 +85,9 @@ void leptp_set_string(leptp_value *v, const char *s, size_t len);
 
 size_t leptp_get_array_size(const leptp_value* v);
 leptp_value* leptp_get_array_element(const leptp_value* v, size_t index); 
+
+size_t leptp_get_object_size(const leptp_value* v);
+const char* leptp_get_object_key(const leptp_value* v, size_t index);
+size_t leptp_get_object_key_length(const leptp_value* v, size_t index);
+leptp_value* leptp_get_object_value(const leptp_value* v, size_t index);
 #endif
