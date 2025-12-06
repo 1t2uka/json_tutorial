@@ -29,7 +29,6 @@
 
 运行：需在当前shell下临时修改动态库搜索路径，将当前目录添加到动态链接库搜索路径最前面
 ```bash
-#
 export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH
 
 ```
