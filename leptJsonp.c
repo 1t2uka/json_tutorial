@@ -8,6 +8,7 @@
 #include <math.h>
 #include <errno.h>
 #include <threads.h>
+#include <wchar.h>
 
 //校验并推进json解析字符位置，搭配leptp_contect结构使用
 #define EXPECT(c,ch)    do{assert(*c->json == (ch)); c->json++;} while(0)
@@ -254,7 +255,37 @@ static int leptp_parse_escape_string(leptp_context *c, const char **p) {
     *p = q; //局部指针传回给调用者
     return LEPTP_PARSE_OK;
 }
-
+//分离字符串解析函数中解析字符串和存储进leptp_value类型的过程，支持对象键的解析
+static int leptp_parse_string_raw(leptp_context* c, char** str, size_t* len) {
+    size_t head = c->top;
+//    unsigned u;
+    const char* p;
+    EXPECT(c, '\"');
+    p = c->json;
+    int ret;
+    while(1) {
+        char ch = *p++;
+        switch(ch) {
+            case '\"' :
+                *len = c->top - head;
+                *str = leptp_context_pop(c, *len);
+                c->json = p;
+                return LEPTP_PARSE_OK;
+            case '\0' :
+                STRING_ERROR(LEPTP_PARSE_MISS_QUOTATION_MARK);
+            case '\\' :
+                ret = leptp_parse_escape_string(c, &p);
+                if(ret != LEPTP_PARSE_OK)
+                    STRING_ERROR(ret);
+                break;
+            default :
+                if((unsigned char)ch < 0x20) 
+                    return LEPTP_PARSE_INVALID_STRING_CHAR;
+                PUTC(c,ch);
+        }
+    }
+}
+#if 0
 static int leptp_parse_string(leptp_context *c, leptp_value *v) {
     size_t head = c->top, len;
     unsigned u;     //存储unicode4位十六进制数转换后的十进制数
@@ -286,6 +317,17 @@ static int leptp_parse_string(leptp_context *c, leptp_value *v) {
         }
     }
 }
+#endif
+
+static int leptp_parse_string(leptp_context* c, leptp_value* v) {
+    int ret;
+    char* s;
+    size_t len;
+    ret = leptp_parse_string_raw(c, &s, &len);
+    if(ret == LEPTP_PARSE_OK)
+        leptp_set_string(v, s, len);
+    return ret;
+}
 
 /*
  * 数组解析函数
@@ -316,7 +358,8 @@ static int leptp_parse_array(leptp_context* c, leptp_value* v) {
         ret = leptp_parse_value(c, &e); //解析叶子节点
         if(ret != LEPTP_PARSE_OK)
             break;
-        memcpy(leptp_context_push(c,sizeof(leptp_value)), &e, sizeof(leptp_value));
+        void* stack_src = leptp_context_push(c, sizeof(leptp_value)); 
+        memcpy(stack_src, &e, sizeof(leptp_value));
         ++size;
         leptp_parse_whitespace(c);  //元素后解析空格
         if(*c->json == ','){
@@ -327,9 +370,10 @@ static int leptp_parse_array(leptp_context* c, leptp_value* v) {
             ++c->json;
             v->type = LEPTP_ARRAY;
             v->u.a.size = size;
-            size *= sizeof(leptp_value);
-            v->u.a.e = (leptp_value*) malloc(size);
-            memcpy(v->u.a.e, leptp_context_pop(c, size), size);
+            size_t bytes_size = size * sizeof(leptp_value);
+            v->u.a.e = (leptp_value*) malloc(bytes_size);
+            void* stack_src_pop = leptp_context_pop(c, bytes_size);
+            memcpy(v->u.a.e, stack_src_pop, bytes_size);
             return LEPTP_PARSE_OK;
         }
         else {
@@ -345,8 +389,87 @@ static int leptp_parse_array(leptp_context* c, leptp_value* v) {
 
 /*
  * 对象解析函数
+ * 对象以{}包裹，且由member组成
+ * member = string ws : ws value
+ * object = { ws [ member *(ws , ws member ) ] ws }
  * */
+static int leptp_parse_object(leptp_context* c, leptp_value* v) {
+    size_t size;
+    leptp_member m;
+    int ret;
+    EXPECT(c, '{');
+    leptp_parse_whitespace(c);
+    if(*c->json == '}') {
+        ++(c->json);
+        v->type = LEPTP_OBJECT;
+        v->u.o.m = 0;
+        v->u.o.size = 0;
+        return LEPTP_PARSE_OK;
+    }
 
+    m.k = NULL;
+    size = 0;
+    while(1) {
+        char* key_str;
+        leptp_init(&m.v);
+
+        if(*c->json != '"'){
+            ret = LEPTP_PARSE_MISS_KEY;
+            break;
+        }
+        
+        //解析键
+        ret = leptp_parse_string_raw(c, &key_str, &m.klen);
+        if(ret != LEPTP_PARSE_OK)
+            break;
+        m.k = (char*)malloc(m.klen + 1);
+        memcpy(m.k, key_str, m.klen);
+        m.k[m.klen] = '\0';
+        
+        leptp_parse_whitespace(c);
+        if(*c->json != ':'){
+            ret = LEPTP_PARSE_MISS_COLON;
+            break;
+        }
+        c->json++;
+        leptp_parse_whitespace(c);
+        ret = leptp_parse_value(c, &m.v);
+        if(ret != LEPTP_PARSE_OK)
+            break;
+        void* push_src = leptp_context_push(c, sizeof(leptp_member));
+        memcpy(push_src, &m, sizeof(leptp_member));
+        ++size;
+        m.k = NULL;
+
+        leptp_parse_whitespace(c);
+        if(*c->json == ','){
+            ++c->json;
+            leptp_parse_whitespace(c);
+        }
+        else if(*c->json == '}') {
+            size_t s = sizeof(leptp_member) * size;
+            ++c->json;
+            v->type = LEPTP_OBJECT;
+            v->u.o.size = size;
+            v->u.o.m = (leptp_member*)malloc(s);
+            void* pop_src = leptp_context_pop(c, s);
+            memcpy(v->u.o.m, pop_src, s);
+            return LEPTP_PARSE_OK;
+        }
+        else{
+            ret = LEPTP_PARSE_MISS_COMMA_OR_CURLY_BRACKET;
+            break;
+        }
+    }
+    free(m.k);
+    for(size_t i = 0; i < size; ++i) {
+        leptp_member* m = (leptp_member*)leptp_context_pop(c, sizeof(leptp_member));
+        free(m->k);
+        leptp_free(&m->v);
+    }
+    v->type = LEPTP_NULL;
+    return ret;
+}
 
 /*
  * 解析主函数
@@ -359,6 +482,7 @@ static int leptp_parse_value(leptp_context *c, leptp_value *v) {
         case 'f' : return letpt_parse_literal(c, v, "false", LEPTP_FALSE);
         case '"' : return leptp_parse_string(c, v);  
         case '[' : return leptp_parse_array(c, v);
+        case '{' : return leptp_parse_object(c, v);
         case '\0': return LEPTP_PARSE_EXPECT_VALUE;
         default: return leptp_parse_number(c,v);
     }
@@ -399,13 +523,20 @@ void leptp_free(leptp_value *v) {
     size_t i;
     assert(v != NULL);
     switch(v->type) {
-        case LEPTP_STRING:
+        case LEPTP_STRING :
             free(v->u.s.s);
             break;
-        case LEPTP_ARRAY:
+        case LEPTP_ARRAY :
             for(int i = 0; i < v->u.a.size; ++i)
                 leptp_free(&v->u.a.e[i]);
             free(v->u.a.e);
+            break;
+        case LEPTP_OBJECT :
+            for(i = 0; i < v->u.o.size; ++i) {
+                free(v->u.o.m[i].k);
+                leptp_free(&v->u.o.m[i].v);
+            }
+            free(v->u.o.m);
             break;
         default:
             break;
@@ -470,4 +601,27 @@ leptp_value* leptp_get_array_element(const leptp_value* v, size_t index) {
     assert(v != NULL && v->type == LEPTP_ARRAY);
     assert(index < v->u.a.size);
     return &v->u.a.e[index];
+}
+
+size_t leptp_get_object_size(const leptp_value* v) {
+    assert(v != NULL && v->type == LEPTP_OBJECT);
+    return v->u.o.size;
+}
+
+const char* leptp_get_object_key(const leptp_value* v, size_t index) {
+    assert(v != NULL && v->type == LEPTP_OBJECT);
+    assert(index < v->u.o.size);
+    return v->u.o.m[index].k;
+}
+
+size_t leptp_get_object_key_length(const leptp_value* v, size_t index) {
+    assert(v != NULL && v->type == LEPTP_OBJECT);
+    assert(index < v->u.o.size);
+    return v->u.o.m[index].klen;
+}
+
+leptp_value* leptp_get_object_value(const leptp_value* v, size_t index) {
+    assert(v != NULL && v->type == LEPTP_OBJECT);
+    assert(index < v->u.o.size);
+    return &v->u.o.m[index].v;
 }
